@@ -1,6 +1,6 @@
 ---
 name: eval-investigation
-description: Perform an autonomous, evidence-backed root-cause investigation of AI-agent evaluation failures. Determines what is failing, how often, whether it's a real agent failure, which system layer owns the behavior, and whether the grader/dataset/tool/prompt/agent is actually responsible — instead of assuming a low score means the agent is wrong.
+description: Autonomous, evidence-backed root-cause investigation for AI-agent evaluations. Analyzes grader scores and traces, inspects source code and system architecture, determines whether failures originate from the agent, grader, tools, dataset, runtime, or observability layer, clusters recurring failure modes, and generates an interactive HTML debugging report with Langfuse trace drilldowns.
 ---
 
 # Eval Investigation Skill
@@ -9,33 +9,62 @@ description: Perform an autonomous, evidence-backed root-cause investigation of 
 
 Perform an autonomous, evidence-backed root-cause investigation of AI-agent evaluation failures.
 
-The goal is not merely to explain low scores.
+The goal is NOT merely to summarize low scores.
 
-Determine:
+The goal is to determine:
 
 - what is failing
-- how often it fails
-- whether it is a real agent failure
-- where the behavior originates
-- which system layer owns the behavior
-- whether the behavior is already implemented elsewhere
-- whether the grader is evaluating the correct behavior/layer
-- whether the grader, dataset, tool, prompt, or agent is actually responsible
-- what should be changed
+- how often it is failing
+- why it is failing
+- whether the agent is actually wrong
+- whether the grader is wrong
+- whether the grader is measuring the wrong behavior
+- whether the grader is observing the wrong system layer
+- whether a tool, dataset, reference answer, prompt, runtime, or implementation is responsible
+- whether supposedly missing behavior is already handled elsewhere in the application
+- where the responsible code/configuration actually lives
+- what the engineer should change first
 
 Behave like a senior AI evaluation engineer debugging a production agent system.
+
+The investigation should reduce the manual work normally required to:
+
+- inspect low-scoring traces individually
+- compare failed and successful traces
+- inspect evaluator feedback
+- locate grader implementations
+- inspect prompts
+- inspect tool implementations
+- inspect datasets/reference answers
+- follow implementation paths across multiple files
+- determine system-layer responsibility
+- determine whether an evaluator itself is flawed
+- group recurring failure patterns
+- identify concrete fixes
 
 ---
 
 # Core Principle
 
-A low evaluation score is an observation, NOT ground truth.
+A LOW EVALUATION SCORE IS AN OBSERVATION.
+
+IT IS NOT GROUND TRUTH.
 
 Never assume:
 
 low score → agent failure
 
-Possible root causes include:
+The evaluator itself is part of the system being investigated and may be:
+
+- incorrectly implemented
+- poorly designed
+- overly strict
+- unable to observe the behavior it expects
+- using inappropriate reference data
+- evaluating the wrong system component
+- inconsistent with the intended architecture
+
+Possible root-cause categories include:
 
 - AGENT_PROMPT
 - AGENT_BEHAVIOR
@@ -50,112 +79,477 @@ Possible root causes include:
 - INFRASTRUCTURE
 - INCONCLUSIVE
 
-The evaluator itself is part of the system being investigated.
+Do not force every failure into an agent problem.
 
 ---
 
-# Autonomy
+# Autonomous Investigation Policy
 
-When given a request such as:
+You are responsible for deciding HOW to investigate.
 
-"Investigate keyword_overlap"
+Do NOT follow a fixed sequence merely because this skill lists possible investigation activities.
 
-perform the complete investigation autonomously.
+The correct investigation path depends on the evidence.
 
-Do not ask the user whether you should:
+Given a request such as:
 
-- inspect traces
-- inspect passing examples
-- inspect GitHub
-- inspect grader implementation
-- inspect agent prompts
-- inspect tools
-- inspect datasets
-- follow code references
-- continue investigating
+"Investigate keyword_overlap."
 
-If available tools can provide evidence, use them.
+or:
 
-Only ask the user when required information genuinely cannot be
-obtained using available tools.
+"Why is the correctness evaluator performing poorly?"
 
----
+determine the investigation strategy dynamically.
 
-# Investigation Workflow
+At every stage:
 
-## Step 1 — Understand the Evaluator
+1. Determine what is currently known.
+2. Identify the most important unanswered question.
+3. Determine which available evidence source can answer it.
+4. Use the appropriate tool.
+5. Examine the new evidence.
+6. Update the current hypotheses.
+7. Decide which hypothesis or uncertainty matters most next.
+8. Gather the next most informative evidence.
+9. Repeat until the root cause is sufficiently supported or the available evidence is exhausted.
 
-Use the evaluation/observability system to retrieve:
+The investigation path should emerge from the evidence.
 
-- evaluator name
-- score type
-- available scores
-- score distribution
-- score comments/reasons
-- number of evaluated traces
-- evaluator metadata
-- dataset/run metadata when available
+Possible investigation actions include, but are not limited to:
 
-Determine whether the evaluator appears to be:
+- inspecting score distributions
+- inspecting grader feedback
+- reading failing traces
+- reading passing traces
+- comparing failing vs passing behavior
+- inspecting evaluator source code
+- inspecting grader prompts
+- inspecting reference answers
+- inspecting expected keywords
+- inspecting dataset construction
+- inspecting the agent's system prompt
+- inspecting developer instructions
+- inspecting tool definitions
+- inspecting tool implementations
+- inspecting middleware
+- inspecting routing logic
+- inspecting approval logic
+- inspecting runtime/harness configuration
+- inspecting frontend/backend behavior
+- following source-code references
+- comparing execution paths
+- validating aggregate failure patterns
+- checking whether supposedly missing behavior exists elsewhere
+- checking whether the grader can observe the responsible system layer
 
-- deterministic/code-based
-- LLM-as-a-judge
-- human-generated
-- unknown
+Do NOT perform an investigation action simply because it appears in this skill.
 
-Do not infer implementation solely from the evaluator's name.
-
----
-
-## Step 2 — Understand the Grader's Claim
-
-For low-scoring cases determine:
-
-- what criterion failed
-- what feedback was provided
-- what expected/reference information exists
-- what behavior the grader expected
-
-Express this explicitly:
-
-GRADER EXPECTATION:
-<behavior being evaluated>
-
-Do not yet assume the expectation itself is correct.
+Every important tool call should help answer a meaningful investigation question.
 
 ---
 
-## Step 3 — Build Evaluation Cohorts
+# Autonomy Rules
 
-Separate traces into:
+Do not repeatedly ask the user:
 
-### FAILING
-Clearly low-scoring traces.
+- Should I inspect traces?
+- Should I inspect passing examples?
+- Should I inspect GitHub?
+- Should I inspect the grader?
+- Should I inspect the prompt?
+- Should I inspect the dataset?
+- Should I inspect the tools?
+- Should I follow this code path?
+- Should I compare successful traces?
+- Should I create the report?
+- Should I continue?
 
-### PARTIAL
-Intermediate or ambiguous scores.
+If the available tools can provide the evidence, continue autonomously.
 
-### PASSING / CONTROL
-High-scoring traces.
+Ask the user only when genuinely necessary, for example:
 
-Passing traces are important.
+- required credentials are unavailable
+- the relevant repository cannot be identified
+- multiple targets are equally plausible and cannot be disambiguated
+- required evidence cannot be accessed
+- a destructive action requires approval
 
-Never diagnose systematic failures using failing traces alone when
-passing controls are available.
+Otherwise continue investigating.
 
 ---
 
-## Step 4 — Reconstruct Executions
+# Available Evidence Sources
 
-For relevant traces retrieve as much as available:
+Use all relevant connected sources.
 
-- trace ID
-- user input
-- system/developer instructions
-- final response
+## Runtime / Evaluation Evidence
+
+Use Langfuse or equivalent evaluation/observability tooling to inspect:
+
+- traces
+- observations
+- evaluation scores
+- score comments
+- grader feedback
+- evaluator feedback
 - model calls
 - tool calls
 - tool arguments
+- tool outputs
+- errors
+- retries
+- metadata
+- datasets
+- dataset runs
+- reference outputs
+- expected values
+- labels
+- evaluator metadata
+
+## Source-Code Evidence
+
+Use GitHub or equivalent repository access to inspect:
+
+- agent implementation
+- system prompts
+- developer prompts
+- agent configuration
+- tool definitions
+- tool schemas
+- tool implementations
+- tool wrappers
+- routing
+- middleware
+- approval logic
+- post-processing
+- evaluator implementations
+- grader prompts
+- grader rubrics
+- score calculations
+- datasets
+- expected answers
+- expected keywords
+- test fixtures
+- architecture documentation
+- README files
+- configuration
+- imports
+- callers
+- callees
+
+Runtime evidence and source-code evidence should reinforce each other whenever possible.
+
+---
+
+# Root-Cause Taxonomy
+
+Use the following categories when appropriate.
+
+## AGENT_PROMPT
+
+The agent instructions cause or enable undesirable behavior.
+
+Examples:
+
+- ambiguous fallback instructions
+- missing edge-case handling
+- conflicting instructions
+- weak tool-selection guidance
+- incorrect scope rules
+- missing error-handling guidance
+
+---
+
+## AGENT_BEHAVIOR
+
+The prompt is reasonable, but the model makes a poor decision.
+
+Examples:
+
+- wrong tool selection
+- unnecessary tool use
+- hallucination
+- premature termination
+- failure to retry
+- ignoring relevant tool output
+- incorrect reasoning
+- unsupported conclusion
+
+---
+
+## AGENT_IMPLEMENTATION
+
+Non-prompt implementation causes the problem.
+
+Examples:
+
+- incorrect routing
+- state-management bug
+- wrong context assembled
+- wrong parameters supplied
+- post-processing bug
+- orchestration bug
+
+---
+
+## TOOL_OR_DATA
+
+The problem originates in a tool or returned data.
+
+Examples:
+
+- malformed response
+- empty response mishandled
+- missing fields
+- stale data
+- incorrect external data
+- API failure
+- schema mismatch
+- misleading tool description
+
+---
+
+## GRADER_IMPLEMENTATION
+
+The evaluator implementation does not behave according to its intended specification.
+
+Examples:
+
+- incorrect scoring calculation
+- parsing bug
+- wrong output field evaluated
+- normalization bug
+- trace/score association bug
+
+---
+
+## GRADER_DESIGN
+
+The grader implementation works as designed, but what it measures is a poor proxy for actual agent quality.
+
+Example:
+
+A keyword-overlap evaluator correctly checks literal keyword presence, but semantically correct paraphrases receive poor scores.
+
+That is not necessarily an implementation bug.
+
+---
+
+## GRADER_RUBRIC
+
+The grader prompt or rubric is itself problematic.
+
+Examples:
+
+- overly strict rubric
+- ambiguous success criteria
+- stylistic preference treated as correctness
+- contradictory requirements
+- requires information the user never requested
+
+---
+
+## GRADER_RUBRIC_MISALIGNMENT
+
+The grader expects the wrong representation of correct behavior or assigns responsibility to the wrong component.
+
+Example:
+
+The system handles unsupported requests correctly through routing, but the grader requires the final response to literally say:
+
+"outside my scope"
+
+even though that phrase is not part of the intended product behavior.
+
+---
+
+## GRADER_OBSERVABILITY_GAP
+
+The expected behavior exists, but the grader cannot observe the layer where it happens.
+
+Example:
+
+The agent calls a destructive tool.
+
+The runtime intercepts the call and requires explicit human approval.
+
+The safety requirement is satisfied, but a grader looking only at the assistant response incorrectly flags the trace.
+
+---
+
+## REFERENCE_OR_DATASET
+
+Reference information is incorrect, incomplete, ambiguous, brittle, or inappropriate.
+
+Examples:
+
+- wrong expected answer
+- overly specific expected keywords
+- mislabeled case
+- outdated reference
+- reference answer requires unrequested detail
+- ambiguous test case
+
+---
+
+## INFRASTRUCTURE
+
+The evaluation or tracing infrastructure itself causes misleading evidence.
+
+Examples:
+
+- missing observation
+- wrong score associated with trace
+- evaluator did not run
+- incomplete telemetry
+- corrupted metadata
+
+---
+
+## INCONCLUSIVE
+
+Available evidence does not justify a stronger conclusion.
+
+Do not force certainty.
+
+---
+
+# Investigation Reasoning Model
+
+Use a hypothesis-driven investigation.
+
+Continuously maintain competing hypotheses.
+
+Example:
+
+H1: The agent actually failed.
+
+H2: The agent prompt caused the behavior.
+
+H3: The tool caused the behavior.
+
+H4: The grader implementation contains a bug.
+
+H5: The grader implementation works, but the design is poor.
+
+H6: The grader rubric is too strict.
+
+H7: The reference data is wrong.
+
+H8: The required behavior exists elsewhere in the system.
+
+H9: The grader cannot observe the responsible layer.
+
+H10: Evaluation infrastructure produced misleading evidence.
+
+At each stage ask:
+
+- Which hypotheses remain plausible?
+- Which hypothesis is currently best supported?
+- What evidence would distinguish between them?
+- Which available tool can obtain that evidence?
+- What evidence would falsify the current leading explanation?
+
+Do not stop at the first plausible explanation.
+
+---
+
+# Evaluator Understanding
+
+Before reaching conclusions, understand what the evaluator actually does.
+
+Determine when possible:
+
+- evaluator name
+- evaluator type
+- deterministic vs LLM-as-a-judge vs human vs unknown
+- inputs
+- reference data
+- scoring mechanism
+- thresholds
+- what high scores mean
+- what low scores mean
+- what behavior it tries to measure
+- what system layers it observes
+- what behavior it cannot observe
+- known limitations
+
+When source code exists, inspect the implementation rather than inferring behavior from the evaluator's name.
+
+For example:
+
+"keyword_overlap"
+
+does not by itself prove:
+
+- matching is case-sensitive
+- matching uses substring search
+- keywords are weighted equally
+- normalization occurs
+
+Inspect the implementation whenever relevant.
+
+---
+
+# Grader Explanation Requirement
+
+Every completed investigation must clearly explain the grader before discussing failure categories.
+
+The explanation must answer:
+
+1. What does this grader evaluate?
+2. What kind of grader is it?
+3. What inputs does it consume?
+4. How is the score produced?
+5. What reference information does it use?
+6. What does a high score represent?
+7. What does a low score represent?
+8. What behavior can the grader observe?
+9. What behavior can it not observe?
+10. What limitations were discovered?
+
+This explanation must appear first in the interactive report.
+
+---
+
+# Trace Cohorts
+
+Use passing traces as controls whenever practical.
+
+Useful cohorts include:
+
+## Failing
+
+Clearly poor evaluator scores according to evaluator semantics.
+
+## Partial
+
+Intermediate scores.
+
+## Passing / Control
+
+High-scoring traces representing successful evaluator outcomes.
+
+Do not assume every score below 1.0 is a failure.
+
+Determine meaningful thresholds from evaluator semantics.
+
+Avoid diagnosing systematic behavior using failing traces alone.
+
+---
+
+# Trace Reconstruction
+
+For relevant traces retrieve as much execution context as available:
+
+- trace ID
+- trace URL
+- user input
+- system/developer instructions
+- final agent response
+- model calls
+- tool calls
+- tool inputs
 - tool outputs
 - errors
 - retries
@@ -163,38 +557,39 @@ For relevant traces retrieve as much as available:
 - grader score
 - grader feedback
 - expected/reference answer
-- expected keywords/labels
+- expected keywords
+- labels
 - metadata
 
-Reconstruct the execution sequence.
+Reconstruct the execution path.
 
-Determine where failing behavior begins to diverge from passing
-behavior.
+Determine where failing behavior differs from passing behavior.
 
 ---
 
-## Step 5 — Diagnose Individual Failures
+# Individual Trace Diagnosis
 
-For every failing trace analyzed, construct a diagnosis:
+For every important failing trace, maintain structured diagnostic information equivalent to:
 
 {
   "trace_id": "...",
-  "score": 0.0,
+  "trace_url": null,
+  "score": null,
   "grader_expectation": "...",
   "observed_behavior": "...",
   "primary_root_cause": "...",
   "failure_mode": "...",
   "failure_stage": "...",
-  "confidence": 0.0,
+  "confidence": null,
   "runtime_evidence": "...",
   "code_evidence": "...",
   "counter_evidence": "...",
   "suggested_fix": "..."
 }
 
-Use descriptive failure modes.
+Use descriptive failure-mode names.
 
-Good:
+Good examples:
 
 - valid_paraphrase_penalized
 - empty_result_triggers_wrong_fallback
@@ -203,149 +598,138 @@ Good:
 - reference_requires_unrequested_information
 - grader_penalizes_formatting_difference
 - wrong_tool_selected_after_partial_result
+- grader_requires_literal_scope_phrase
+- tool_description_encourages_wrong_fallback
 
-Avoid vague labels such as:
+Bad examples:
 
 - bad_answer
-- grader_problem
 - failed_eval
+- grader_problem
+- low_score
+
+Use INCONCLUSIVE when necessary.
 
 ---
 
-# Source-Code Investigation
+# Deep Source-Code Investigation
 
-Trace evidence alone may not explain WHY behavior occurred.
+Runtime traces often show WHAT happened.
 
-When implementation evidence could resolve uncertainty, inspect the
-connected source repository automatically.
+Source code can explain WHY.
+
+When implementation evidence could resolve uncertainty, inspect the repository automatically.
+
+Do not stop with:
+
+"I cannot see the expected keywords."
+
+if repository access can locate them.
+
+Do not guess about implementation when code is available.
 
 ---
 
-## Step 6 — Inspect Grader Implementation
+# Grader Code Investigation
 
-Search using:
+When relevant inspect:
 
-- evaluator name
-- score name
-- evaluator comments
-- expected/reference field names
-- rubric text
-
-Locate:
-
-- grader implementation
-- scoring logic
-- evaluator prompt/rubric
-- normalization/parsing
-- expected/reference data
+- evaluator implementation
 - evaluator configuration
+- grader prompt
+- rubric
+- score calculation
+- normalization
+- parsing
+- reference fields
+- expected values
+- expected keywords
+- dataset construction
 
 Determine:
 
-1. What does the grader actually measure?
-2. How is the score calculated?
-3. Is implementation consistent with its specification?
-4. What information does it observe?
-5. What information can it NOT observe?
-
-Never claim implementation behavior without inspecting supporting code
-when repository access is available.
+- what the grader actually computes
+- whether implementation matches intended behavior
+- whether implementation contains a bug
+- whether design itself is problematic
+- what information the grader can observe
+- what important context it does not receive
 
 ---
 
-## Step 7 — Inspect Dataset / Reference Data
+# Agent Prompt Investigation
 
-Locate when relevant:
-
-- expectedKeywords
-- expectedOutput
-- idealAnswer
-- referenceAnswer
-- labels
-- fixtures
-- dataset construction
-
-Determine whether the evaluation target itself is:
-
-- correct
-- ambiguous
-- overly specific
-- outdated
-- incomplete
-- stylistic rather than semantic
-
-Do not guess hidden reference values if they can be found in source
-code.
-
----
-
-## Step 8 — Inspect Agent Prompt
-
-Locate:
+When relevant inspect:
 
 - system prompt
-- developer instructions
+- developer prompt
+- examples
+- tool-selection rules
+- scope rules
+- fallback rules
+- safety requirements
+- retry behavior
 - agent configuration
-- few-shot examples
-- scope instructions
-- fallback instructions
-- tool-selection guidance
 
-Compare agent behavior against actual instructions.
+Compare the actual trace behavior against the real prompt.
 
-Do not recommend prompt changes before verifying what the prompt
-currently says.
+Do not recommend changing a prompt you have not inspected when prompt evidence is available.
 
 ---
 
-## Step 9 — Inspect Relevant Tools
+# Tool Investigation
 
-For tools involved in important failures inspect:
+When relevant inspect:
 
 - tool description
-- schema
-- implementation
+- parameters/schema
+- tool implementation
 - return format
 - error handling
-- fallback logic
 - wrappers
+- fallback logic
+- permission logic
 
-Determine whether apparent agent failures actually originate from tool
-behavior or misleading tool descriptions.
+Determine whether the observed behavior comes from:
+
+- agent reasoning
+- misleading tool description
+- tool response semantics
+- tool implementation
+- surrounding wrappers
 
 ---
 
-# Deep Code-Path Investigation
+# Full Code-Path Investigation
 
-## Step 10 — Follow the Full Behavior Path
+Do not stop after finding the first relevant file.
 
-Do NOT stop after finding the first relevant file.
-
-Follow references across the system.
+Follow the behavior across the application.
 
 Potential path:
 
 User
 → Router
-→ Agent configuration
+→ Agent Configuration
 → Prompt
 → Model
-→ Tool definition
-→ Tool wrapper
-→ Tool implementation
+→ Tool Definition
+→ Tool Wrapper
+→ Tool Implementation
 → Middleware
-→ Approval layer
-→ Runtime/harness
+→ Approval Layer
+→ Runtime/Harness
+→ Backend
+→ Frontend
 → Post-processing
-→ UI/backend
-→ Final response
-→ Evaluator
+→ Final Response
+→ Grader
 
 If:
 
 agent.ts → tools.ts
 
-inspect tools.ts.
+inspect tools.ts when relevant.
 
 If:
 
@@ -353,24 +737,33 @@ tools.ts → approvalManager
 
 inspect approvalManager.
 
-If middleware transforms results, inspect it.
+If middleware changes behavior, inspect middleware.
 
-Follow imports, callers, callees, configuration and registration logic
-until responsibility for the behavior is understood.
+Follow relevant:
+
+- imports
+- callers
+- callees
+- registrations
+- configuration
+- wrappers
+- middleware
+
+until responsibility is understood.
 
 ---
 
 # Responsibility Mapping
 
-## Step 11 — Determine Who Actually Owns the Behavior
+For every major failure, identify:
 
-For every major grader criterion determine:
+## Grader Expectation
 
-### Grader Expectation
-What exactly does the evaluator expect?
+What behavior does the evaluator expect?
 
-### Intended Owner
-Which component SHOULD own that behavior?
+## Intended Owner
+
+Which system component SHOULD own this behavior?
 
 Possible owners:
 
@@ -384,168 +777,138 @@ Possible owners:
 - approval gate
 - runtime/harness
 - backend
-- frontend/UI
-- evaluator
+- frontend
+- evaluator itself
 
-### Actual Owner
+## Actual Owner
+
 Where is the behavior actually implemented?
 
-### Runtime Evidence
-What actually happened?
+## Runtime Behavior
 
-### Grader Visibility
-Can the grader observe the layer where the behavior occurs?
+What happened in the trace?
 
-### Evaluation Mismatch
-Is the evaluator checking the wrong layer or representation?
+## Grader Visibility
 
-This responsibility mapping is mandatory for major findings.
+Can the grader observe the responsible layer?
+
+## Evaluation Mismatch
+
+Is the grader checking the wrong component or representation?
+
+This responsibility mapping is mandatory for major root causes.
 
 ---
 
-# Check Whether the "Missing" Behavior Exists Elsewhere
+# Check Whether Missing Behavior Exists Elsewhere
 
-## Step 12 — Search Before Declaring Something Missing
+This is a critical investigation rule.
 
-When a grader claims behavior is absent, do NOT immediately recommend
-adding it to the agent prompt.
+When a grader claims something is missing, do NOT immediately recommend adding it to the agent prompt.
 
-Search the relevant code path.
+Search the relevant system path.
 
 Determine whether the behavior is:
 
 - genuinely missing
 - implemented elsewhere
-- enforced by middleware
-- enforced by tool wrappers
-- enforced by runtime/harness
 - handled by routing
-- handled by UI
-- intentionally delegated to another component
+- enforced by middleware
+- enforced by a tool wrapper
+- enforced by runtime/harness
+- handled by backend logic
+- handled by frontend/UI
+- intentionally delegated to another layer
 - impossible for the evaluated component to control
 
 Example:
 
 Grader says:
 
-"Agent failed to request approval before destructive action."
+"Agent failed to ask for confirmation before deleting a user."
 
 Trace shows:
 
-agent → delete_user()
+Agent → delete_user()
 
-Do not immediately classify AGENT_PROMPT.
+Before declaring an agent failure, investigate:
 
-Search:
-
-- delete_user
-- approval
-- confirmation
-- requires_approval
+- delete_user implementation
+- approval configuration
+- tool wrapper
 - middleware
-- tool configuration
 - runtime configuration
+- approval layer
 
-If execution is already intercepted by a human approval gate, classify
-appropriately as:
+If the system actually performs:
+
+delete_user
+→ requiresApproval = true
+→ runtime pauses
+→ user approves
+→ execution proceeds
+
+then the likely diagnosis is:
 
 GRADER_OBSERVABILITY_GAP
 
-and/or:
+and possibly:
 
 GRADER_RUBRIC_MISALIGNMENT
 
-The correct fix may be the grader, not the agent.
+Do NOT recommend changing the agent prompt merely to make the grader happy.
 
 ---
 
-# Understand Intended Architecture
+# Application Architecture Understanding
 
-## Step 13 — Determine How the Application Is Supposed to Work
-
-When necessary inspect:
+When useful, inspect:
 
 - README
-- architecture documentation
+- architecture docs
 - comments
-- configuration
+- agent setup
 - tool registration
-- agent initialization
-- middleware
+- runtime configuration
+- middleware configuration
 - evaluation documentation
 
-Understand the intended division of responsibility before recommending
-changes.
+Understand the application's intended division of responsibility.
 
-Do not move behavior into the agent prompt merely because the grader
-cannot see where the architecture currently implements it.
-
----
-
-# Hypothesis-Driven Investigation
-
-## Step 14 — Form Competing Hypotheses
-
-Do not stop at the first plausible explanation.
-
-For important failures create multiple possible explanations.
-
-Example:
-
-Agent receives score 0 despite apparently correct response.
-
-Possible hypotheses:
-
-H1: Agent omitted important information.
-
-H2: Reference data is incorrect.
-
-H3: Grader implementation contains a bug.
-
-H4: Grader implementation is correct but design is brittle.
-
-H5: Grader cannot observe where required behavior occurs.
-
-H6: Score is associated with incorrect trace.
-
-H7: Agent prompt caused behavior.
-
-H8: Tool output caused behavior.
-
-Use runtime and implementation evidence to support or eliminate
-hypotheses.
+Do not recommend moving behavior into the model prompt when the architecture intentionally implements it elsewhere.
 
 ---
 
 # Passing-vs-Failing Analysis
 
-## Step 15 — Find Systematic Differences
+Compare passing and failing traces.
 
-Compare failing traces against passing controls.
+Look for characteristics disproportionately associated with failures.
 
-Look for patterns involving:
+Potential dimensions:
 
 - tool choice
 - tool sequence
-- empty results
-- errors
+- empty tool results
+- tool errors
 - retries
-- fallback paths
+- fallback behavior
 - request category
-- conversation state
-- response formatting
+- response format
 - wording
 - refusal behavior
 - routing
+- conversation state
 - dataset category
+- specific code path
 
-Prefer evidence such as:
+Prefer:
 
-"18/22 failing traces take path X, compared with 2/31 passing traces."
+"18 of 22 failing traces take path X, compared with 2 of 31 passing traces."
 
 over:
 
-"Some failures take path X."
+"Some failing traces take path X."
 
 Never invent counts.
 
@@ -553,100 +916,111 @@ Never invent counts.
 
 # Failure Clustering
 
-## Step 16 — Group Recurring Failures
+Group individual diagnoses into meaningful recurring failure categories.
 
-Cluster individual diagnoses into meaningful failure modes.
+For each category determine:
 
-For each cluster determine:
-
-- failure mode
+- unique category ID
+- category name
+- plain-English description
 - root-cause category
 - affected trace count
 - percentage of failures
-- representative trace IDs
 - confidence
-- runtime evidence
+- severity
+- representative traces
+- all trace IDs when practical
+- runtime pattern
 - code evidence
-- responsible system layer
-- recommended fix
+- responsible layer
+- suggested fix
 
-Do not claim prevalence from a small sample unless validated against the
-broader dataset.
+Prefer mutually exclusive primary diagnoses for the main failure distribution.
+
+If categories overlap, clearly state that percentages may overlap.
+
+Percentages must use verified counts.
 
 ---
 
 # Grader Audit
 
-## Step 17 — Evaluate Grader Health
+Every investigation should assess grader health when evidence permits.
 
-Explicitly assess:
+Evaluate:
 
-### Implementation
-Does it behave according to specification?
+## Implementation
 
-### Design
-Does what it measures correspond to actual agent quality?
+Does implementation behave as intended?
 
-### Rubric
-Is it clear, appropriate and sufficiently flexible?
+## Design
 
-### Observability
-Can it observe the behavior it expects?
+Does the metric represent actual agent quality?
 
-### Reference Data
+## Rubric
+
+Is the rubric clear and appropriate?
+
+## Observability
+
+Can the grader observe the behavior it expects?
+
+## Reference Data
+
 Are expected answers/keywords/labels appropriate?
 
-### Consistency
-Are semantically similar responses treated consistently?
+## Consistency
 
-Distinguish carefully between:
+Are similar outputs treated similarly?
 
-- GRADER_IMPLEMENTATION
-- GRADER_DESIGN
-- GRADER_RUBRIC
-- GRADER_RUBRIC_MISALIGNMENT
-- GRADER_OBSERVABILITY_GAP
-- REFERENCE_OR_DATASET
+Clearly distinguish:
+
+- healthy grader
+- implementation bug
+- design problem
+- rubric issue
+- rubric misalignment
+- observability gap
+- reference-data problem
 
 ---
 
 # Agent Audit
 
-## Step 18 — Evaluate Actual Agent Health
+Evaluate agent health separately.
 
-Separately inspect:
+Inspect:
 
 - prompt quality
 - instruction clarity
 - tool selection
 - tool descriptions
-- fallback behavior
+- tool/data handling
 - error handling
+- fallback behavior
 - retry behavior
 - hallucinations
 - premature termination
 - scope adherence
-- handling of missing/empty data
+- handling of missing information
 
-Do not modify an otherwise-correct agent merely to game a poorly
-designed evaluator.
+Do not modify a correct agent merely to improve a bad evaluator score.
 
 Bad recommendation:
 
-"Add the evaluator's expected keywords to the system prompt."
+"Add all expected keywords to the system prompt."
 
 Better recommendation:
 
-"The response is semantically correct. Fix the evaluator rather than
-optimizing production behavior for lexical overlap."
+"The production behavior is semantically correct. Fix the evaluator rather than training the agent to mimic reference wording."
 
 ---
 
-# Recommendations
+# Recommendation Targeting
 
-## Step 19 — Identify the Correct Change Target
+Determine where each fix belongs.
 
-For every root cause determine whether the fix belongs in:
+Possible targets:
 
 - AGENT_PROMPT
 - AGENT_CODE
@@ -660,29 +1034,32 @@ For every root cause determine whether the fix belongs in:
 - GRADER_RUBRIC
 - DATASET
 - REFERENCE_DATA
+- INFRASTRUCTURE
 - NOTHING
 
-Prefer the smallest fix addressing the underlying problem.
+Prefer the smallest change that fixes the underlying problem.
 
-Do not modify source code unless explicitly authorized.
+Do not modify code unless explicitly authorized.
 
 ---
 
-## Step 20 — Prioritize Fixes
+# Recommendation Prioritization
 
-Rank recommendations using:
+Prioritize recommendations by:
 
 1. expected impact
-2. confidence
-3. implementation effort
-4. blast radius
+2. evidence strength
+3. confidence
+4. engineering effort
+5. blast radius
 
-For every recommendation provide:
+For each recommendation provide:
 
-- change target
+- priority
+- target
 - recommended change
 - reason
-- supporting evidence
+- evidence
 - likely repository/file
 - expected impact
 - confidence
@@ -691,18 +1068,21 @@ For every recommendation provide:
 
 # Evidence Standard
 
-Every major conclusion must be supported by evidence.
+Every important conclusion should be grounded in evidence.
 
 Whenever possible combine:
 
-### Runtime Evidence
-Langfuse traces, scores, observations and evaluator feedback.
+## Runtime Evidence
 
-### Code Evidence
-Source repository implementation.
+From traces, scores, observations, tool calls, evaluator feedback.
 
-### Architectural Evidence
-Documentation/configuration showing intended responsibility.
+## Code Evidence
+
+From source implementation.
+
+## Architectural Evidence
+
+From configuration/documentation showing intended responsibility.
 
 Clearly distinguish:
 
@@ -715,86 +1095,124 @@ HYPOTHESIS
 Never fabricate:
 
 - trace contents
+- scores
 - counts
 - percentages
-- source files
+- file paths
 - code
-- grader logic
+- tool behavior
+- evaluator logic
 - expected keywords
 - reference answers
-- tool behavior
+- trace URLs
 
-Use "unknown" or "not verified" when evidence is unavailable.
+Use:
+
+Unknown
+
+Not verified
+
+or:
+
+Insufficient evidence
+
+when necessary.
 
 ---
 
 # Confidence
 
-Use confidence based on evidence strength.
+Use evidence-based confidence.
 
-HIGH:
-Runtime + source-code evidence agree.
+## High
 
-MEDIUM:
-Strong runtime pattern but incomplete implementation evidence.
+Runtime evidence and implementation evidence strongly agree.
 
-LOW:
-Limited sample or unresolved competing explanations.
+## Medium
 
-Do not use high confidence merely because an explanation sounds
-plausible.
+Strong runtime pattern, but incomplete implementation evidence.
+
+## Low
+
+Small sample, incomplete evidence, or unresolved competing hypotheses.
+
+Confidence should communicate uncertainty honestly.
 
 ---
 
-# Scale
+# Scale Handling
 
 For small datasets:
-Analyze every failing trace when practical.
+
+Analyze all failing traces when practical.
 
 For larger datasets:
 
-1. retrieve score metadata
-2. identify cohorts
-3. inspect representative failures
-4. discover candidate patterns
-5. expand around those patterns
-6. validate prevalence across broader data
-7. compare with passing controls
+- retrieve broad score metadata
+- identify cohorts
+- inspect representative traces
+- identify candidate patterns
+- expand analysis around those patterns
+- validate prevalence against the broader set
+- compare against passing controls
 
-Never extrapolate percentages from an unvalidated sample.
-
----
-
-# Investigation Stopping Condition
-
-Do not stop because you found one plausible explanation.
-
-Finish when:
-
-- important failure patterns are identified
-- passing controls were considered
-- major competing hypotheses were tested
-- relevant runtime evidence was inspected
-- relevant grader code was inspected
-- relevant agent/tool code was inspected when necessary
-- responsibility ownership is understood
-- cross-layer behavior was checked
-- recommendations are evidence-backed
-
-OR:
-
-available evidence/tools are exhausted.
-
-Clearly report unresolved uncertainty.
+Do not claim broad percentages from a small unvalidated sample.
 
 ---
 
-# Required Investigation Output
+# Investigation Completion Criteria
 
-Create a structured investigation result containing:
+The exact investigation sequence is dynamic.
+
+However, do not stop until enough evidence exists to answer the relevant questions.
+
+Before concluding, determine as appropriate:
+
+- what the grader actually measures
+- what produced the low score
+- whether the behavior is genuinely incorrect
+- how common the pattern is
+- how passing traces differ
+- what implementation produced the behavior
+- which system layer owns the behavior
+- whether supposedly missing behavior exists elsewhere
+- whether the grader can observe the responsible layer
+- whether grader design/implementation/rubric/reference data could be responsible
+- whether competing explanations were considered
+- what evidence supports the final diagnosis
+- what should be changed
+
+Not every investigation requires inspecting every component.
+
+Use judgment.
+
+Do not inspect middleware if middleware is irrelevant.
+
+Do not inspect tools when no tools are involved.
+
+Do not fetch hundreds of traces when a smaller investigation plus prevalence validation is sufficient.
+
+---
+
+# Structured Investigation Result
+
+Before creating the human-facing report, organize the validated investigation into structured data.
+
+This structured result is the source of truth for downstream rendering.
+
+Use a structure equivalent to:
 
 {
-  "evaluator": "...",
+  "evaluator": {
+    "name": "...",
+    "type": "...",
+    "description": "...",
+    "what_it_measures": "...",
+    "how_scoring_works": "...",
+    "inputs": [],
+    "limitations": [],
+    "observable_layers": []
+  },
 
   "summary": "...",
 
@@ -805,18 +1223,47 @@ Create a structured investigation result containing:
   "stats": {
     "total_evaluated": null,
     "failures": null,
+    "partial": null,
+    "passing": null,
     "failures_analyzed": null,
     "passing_controls_analyzed": null
   },
 
-  "failure_modes": [
+  "failure_categories": [
     {
+      "id": "...",
       "name": "...",
+      "description": "...",
       "root_cause": "...",
       "affected_count": null,
       "percentage": null,
       "confidence": null,
-      "representative_traces": []
+      "severity": "...",
+      "trace_ids": [],
+      "representative_trace_ids": [],
+      "recommended_fix": "..."
+    }
+  ],
+
+  "traces": [
+    {
+      "trace_id": "...",
+      "trace_url": null,
+      "score": null,
+      "cohort": "failing",
+      "failure_category_id": "...",
+      "user_input": "...",
+      "final_response": "...",
+      "grader_feedback": "...",
+      "grader_expectation": "...",
+      "diagnosis": "...",
+      "confidence": null,
+      "runtime_evidence": "...",
+      "code_evidence": "...",
+      "responsible_layer": "...",
+      "handled_elsewhere": null,
+      "grader_observes_correct_layer": null,
+      "suggested_fix": "..."
     }
   ],
 
@@ -850,208 +1297,711 @@ Create a structured investigation result containing:
 
 Use null when evidence is unavailable.
 
-Do not invent values to complete the structure.
-
-This structured investigation is the SOURCE OF TRUTH for downstream
-reports.
+Never invent values merely to populate the structure.
 
 ---
 
-# Human-Facing Investigation Summary
+# Langfuse Trace Links
 
-The investigation should clearly communicate:
+Developers should be able to move directly from the investigation report to the original trace.
 
-## Executive Summary
+For every analyzed trace, attempt to retain:
 
-- evaluator
-- traces evaluated
-- failures
-- passing controls
-- primary root cause
-- agent health
+- trace_id
+- trace_url
+- score
+- failure category
+- short diagnosis
+
+Use a Langfuse trace URL only when:
+
+1. it is returned directly by available tooling, OR
+2. it can be safely constructed from verified Langfuse host/project/trace identifiers.
+
+Never fabricate trace URLs.
+
+If a verified URL is unavailable:
+
+display the trace ID and:
+
+Langfuse link unavailable
+
+When supported, external Langfuse links should open in a new tab.
+
+---
+
+# Interactive HTML Investigation Report
+
+After the investigation is complete, ALWAYS create an interactive HTML investigation report using the available web-artifact/report-building skill.
+
+Do not ask permission.
+
+Do not use Notion.
+
+The HTML artifact is the primary human-facing output.
+
+The report must use the validated structured investigation result.
+
+Do not independently regenerate conclusions while building the UI.
+
+---
+
+# HTML Design Philosophy
+
+The report should feel like an engineering debugging console.
+
+It should NOT look like:
+
+- a marketing page
+- a generic analytics dashboard
+- a long markdown report converted to HTML
+
+The UI should help developers move from:
+
+grader understanding
+→ aggregate problem
+→ failure category
+→ individual trace
+→ raw Langfuse evidence
+→ code/root cause
+→ recommended fix
+
+The report must be:
+
+- interactive
+- structured
+- color-coded
+- evidence-first
+- developer-oriented
+- easy to scan
+- drill-down friendly
+
+---
+
+# Mandatory HTML Report Structure
+
+The report MUST use the following information architecture.
+
+---
+
+## 1. Grader Overview
+
+This must be the first section.
+
+Title example:
+
+What does `keyword_overlap` evaluate?
+
+Explain:
+
+- grader purpose
+- grader type
+- behavior measured
+- how scoring works
+- inputs/reference data
+- meaning of high score
+- meaning of low score
+- observable system layers
+- grader limitations
+
+Also show summary cards:
+
+- grader name
+- total traces
+- failing traces
+- partial traces if relevant
+- passing traces
+- overall/average score when meaningful
 - grader health
+- agent health
 
+A developer should understand the evaluator before seeing failure analysis.
 
-## Failure Landscape
+---
 
-Failure mode | Root cause | Affected | % | Confidence
+## 2. Failure Category Distribution
 
+Immediately after the grader overview, show a prominent interactive table.
 
-## Root Causes
+Required columns:
 
-For each:
+| Failure Category | Root Cause | Trace Count | % of Failures | Confidence | Severity |
 
-- what grader expected
-- what actually happened
+Example:
+
+| Failure Category | Root Cause | Trace Count | % of Failures | Confidence | Severity |
+|---|---|---:|---:|---|---|
+| Valid paraphrase penalized | GRADER_DESIGN | 11 | 61% | High | High |
+| Over-specific reference | REFERENCE_OR_DATASET | 4 | 22% | High | Medium |
+| Actual agent failure | AGENT_BEHAVIOR | 2 | 11% | Medium | Medium |
+| Tool issue | TOOL_OR_DATA | 1 | 6% | High | Medium |
+
+Requirements:
+
+- categories come from actual investigation
+- trace counts are verified
+- percentages use verified counts
+- denominator is clear
+- categories preferably use mutually exclusive primary diagnoses
+- overlapping categories must be labeled as overlapping
+
+This table is the central navigation element of the report.
+
+---
+
+## 3. Clickable Failure Categories
+
+Every category row must be clickable or expandable.
+
+Clicking a category should show:
+
+- category name
+- plain-English explanation
+- root cause
+- affected trace count
+- percentage
+- confidence
+- severity
+- common runtime pattern
+- code pattern when relevant
+- recommended fix
+- all associated analyzed traces
+
+The developer should never need to manually search for the trace IDs belonging to a category.
+
+---
+
+## 4. Trace List for Selected Category
+
+For every trace display:
+
+- trace ID
+- grader score
+- user-input preview
+- concise diagnosis
+- grader feedback when available
+- confidence
+- verified Langfuse link when available
+
+Example:
+
+Trace: dad-014
+
+Score: 0.00
+
+Diagnosis:
+Safe out-of-scope handling was penalized because the grader expected literal reference wording.
+
+Confidence: High
+
+[Open in Langfuse]
+
+If no verified link exists:
+
+Langfuse link unavailable
+
+Never create fake URLs.
+
+---
+
+## 5. Individual Trace Detail
+
+Trace rows/cards should be selectable or expandable.
+
+Show:
+
+### User Input
+
+### Agent Response
+
+### Grader Score
+
+### Grader Feedback
+
+### Failure Category
+
+### Grader Expectation
+
+### Observed Behavior
+
+### Relevant Tool Calls
+
+### Runtime Evidence
+
+### Code Evidence
+
+### Responsible System Layer
+
+### Is This Behavior Handled Elsewhere?
+
+Yes / No / Partially / Unknown
+
+### Can the Grader Observe the Correct Layer?
+
+Yes / No / Partially / Unknown
+
+### Final Diagnosis
+
+### Confidence
+
+### Suggested Fix
+
+### Open Original Trace
+
+Use verified Langfuse link when available.
+
+---
+
+## 6. Passing vs Failing Comparison
+
+Show important differences discovered between failing and passing traces.
+
+Example:
+
+Failing:
+
+internal_search
+→ []
+→ web_search
+
+Passing:
+
+internal_search
+→ []
+→ report no matching result
+
+Or:
+
+Failing:
+Semantically correct wording without exact reference phrase.
+
+Passing:
+Same conceptual answer with exact phrase expected by grader.
+
+Only display comparisons supported by evidence.
+
+---
+
+## 7. Root-Cause Deep Dive
+
+For every major root cause show an expandable card.
+
+Include:
+
+- root-cause title
+- root-cause category
+- confidence
+- affected traces
+- affected percentage
+- grader expectation
+- actual behavior
 - runtime evidence
 - code evidence
-- responsible layer
-- actual code path
+- relevant repository files
+- responsible system layer
 - whether behavior exists elsewhere
-- whether grader can observe it
+- whether grader observes correct layer
 - competing hypotheses
 - final diagnosis
 - recommended fix
 
+---
 
-## Grader Health
+## 8. Responsibility and Code-Path Analysis
 
-- implementation
-- design
-- rubric
-- observability
-- reference data
-- overall verdict
+For important findings show:
 
+Grader Expectation
+→ Intended Owner
+→ Actual Owner
+→ Runtime Behavior
+→ Grader Visibility
+→ Evaluation Mismatch
 
-## Agent Health
+When useful, show system path:
 
-- prompt
-- tools
-- behavior
-- error handling
-- overall verdict
+User
+→ Router
+→ Agent
+→ Tool
+→ Middleware
+→ Runtime/Harness
+→ Final Response
+→ Grader
 
+Highlight:
 
-## Recommended Actions
+- where grader expects behavior
+- where behavior actually occurs
+- which layer owns responsibility
+- where the mismatch occurs
 
-Prioritized by impact and confidence.
+This section is especially important for:
 
-
-## Representative Traces
-
-Include relevant failing and passing trace IDs.
-
-
-## Relevant Source Files
-
-Include important repository paths and why they matter.
-
-
-## Uncertainties
-
-Explicitly state anything that could not be verified.
+- GRADER_OBSERVABILITY_GAP
+- GRADER_RUBRIC_MISALIGNMENT
+- AGENT_PROMPT
+- TOOL_OR_DATA
 
 ---
 
-# Quality Check Before Completion
+## 9. Grader Health
 
-Before completing an investigation verify:
+Display:
 
-- Did I inspect failing traces?
-- Did I inspect passing controls?
-- Did I understand what the grader actually measures?
-- Did I inspect grader implementation when available?
+- implementation correctness
+- design alignment
+- rubric quality
+- observability
+- reference-data quality
+- consistency
+- overall grader verdict
+
+Possible statuses:
+
+- Healthy
+- Design Concern
+- Rubric Misalignment
+- Implementation Bug
+- Observability Gap
+- Reference Problem
+- Unclear
+
+---
+
+## 10. Agent Health
+
+Display separately:
+
+- prompt quality
+- tool selection
+- tool/data handling
+- reasoning/behavior
+- fallback behavior
+- error handling
+- overall agent verdict
+
+Do not mix grader problems with agent-health findings.
+
+---
+
+## 11. Recommended Actions
+
+Display prioritized recommendation cards.
+
+Each should include:
+
+- priority
+- change target
+- recommended change
+- reason
+- supporting evidence
+- expected impact
+- confidence
+- repository/file where relevant
+
+Clearly label:
+
+- FIX AGENT
+- FIX GRADER
+- FIX DATASET
+- FIX TOOL
+- FIX INFRASTRUCTURE
+- NO CHANGE REQUIRED
+
+The highest-impact evidence-backed recommendation must appear first.
+
+---
+
+## 12. Uncertainties
+
+Clearly list:
+
+- unavailable evidence
+- unverified hypotheses
+- missing code evidence
+- missing dataset/reference evidence
+- missing Langfuse links
+- incomplete trace coverage
+- low-confidence findings
+
+Do not hide uncertainty.
+
+---
+
+# HTML Interaction Requirements
+
+Required:
+
+1. Failure-category rows must be clickable/expandable.
+2. Clicking a category must show its traces.
+3. Trace rows must be clickable/expandable.
+4. Verified Langfuse links must be clickable.
+5. Users must be able to return to the category overview.
+
+Recommended when useful:
+
+- filter by failure category
+- filter by root-cause type
+- filter by severity
+- filter by confidence
+- sort by score
+- sort by trace count
+- search by trace ID
+- expand/collapse root-cause cards
+- toggle runtime evidence vs code evidence
+
+Do not add interactions that do not help debugging.
+
+---
+
+# Color Semantics
+
+Use consistent status colors.
+
+## Red
+
+Confirmed high-impact agent/tool/implementation issue.
+
+## Orange
+
+Actionable grader/design/rubric issue.
+
+## Yellow
+
+Potential concern, partial evidence, or medium confidence.
+
+## Green
+
+Healthy / passing / no issue.
+
+## Gray
+
+Unknown / inconclusive / unverified.
+
+Color must never be the only signal.
+
+Always include text labels.
+
+---
+
+# Report Navigation Model
+
+The most important navigation flow is:
+
+Grader Explanation
+→ Failure Category Table
+→ Click Category
+→ Trace List
+→ Click Trace
+→ Detailed Evidence
+→ Open Original Trace in Langfuse
+
+Do not bury this workflow behind secondary UI.
+
+---
+
+# Interactive Report Quality Requirements
+
+Before considering the artifact complete verify:
+
+- grader explanation appears first
+- failure-category table appears immediately after grader explanation
+- categories have verified counts
+- percentages are mathematically valid
+- clicking a category shows the correct traces
+- each displayed trace belongs to the selected category
+- trace scores match source evidence
+- verified Langfuse links work when available
+- no Langfuse URLs were invented
+- root causes use runtime/code evidence
+- grader health and agent health are separated
+- recommendations identify the correct change target
+- uncertainty is visible
+- UI is color-coded consistently
+- UI is readable and developer-focused
+
+---
+
+# Final Chat Response
+
+After creating the interactive report, keep the chat response short.
+
+Include:
+
+- grader investigated
+- primary finding
+- number of failing traces analyzed
+- number of failure categories discovered
+- highest-priority recommendation
+- reference/link to interactive report when available
+
+Do not repeat the full investigation in chat.
+
+The interactive artifact is the detailed deliverable.
+
+---
+
+# Investigation Quality Checklist
+
+Before completing the investigation ask:
+
+- Do I understand what the grader actually does?
+- Did I inspect enough runtime evidence?
+- Did I use passing controls where appropriate?
+- Did I inspect grader implementation when relevant?
 - Did I inspect reference data when relevant?
 - Did I inspect agent prompt when relevant?
-- Did I inspect tool implementation when relevant?
-- Did I follow code references beyond the first matching file?
+- Did I inspect tools when relevant?
+- Did I follow code paths beyond the first obvious file?
 - Did I check whether supposedly missing behavior exists elsewhere?
-- Did I identify which layer owns the behavior?
-- Did I determine whether the grader can observe that layer?
+- Did I identify the responsible system layer?
+- Can the grader observe that layer?
 - Did I consider competing hypotheses?
-- Did I validate aggregate claims with evidence?
+- Did I validate aggregate counts?
 - Did I avoid automatically blaming the agent?
-- Did I avoid recommending changes merely to game the evaluator?
-- Are recommendations tied to actual evidence?
-- Did I state uncertainty?
+- Did I avoid recommending agent changes merely to game the grader?
+- Are conclusions supported by evidence?
+- Is confidence calibrated to evidence?
+- Did I identify meaningful failure categories?
+- Are trace-category mappings correct?
+- Are category percentages verified?
+- Did I create the interactive report?
+- Does every verified trace link point to the actual Langfuse trace?
 
-If important checks are incomplete and available tools can resolve them,
-continue investigating.
+If important questions remain unresolved and available tools can answer them, continue investigating.
 
 ---
 
 # Deep-Dive Example
 
-Suppose a grader says:
+Suppose the grader says:
 
 "Agent failed to request confirmation before deleting a user."
 
-Trace:
+The trace shows:
 
-Agent → delete_user()
+Agent
+→ delete_user()
 
-Do NOT immediately conclude:
+A shallow investigation would say:
 
-AGENT_PROMPT failure.
+"Add confirmation instructions to the system prompt."
 
-Instead:
+Do NOT do that.
 
-1. Inspect the trace.
-2. Determine exactly what the grader evaluates.
-3. Search repository for delete_user.
-4. Inspect tool registration.
-5. Search approval/confirmation configuration.
-6. Follow wrappers/middleware/runtime behavior.
-7. Determine which component owns approval.
-8. Check whether runtime evidence confirms approval occurred.
-9. Determine whether the grader can observe that event.
-10. Compare with passing examples.
+Instead investigate dynamically.
 
-If you discover:
+You may:
+
+- inspect the trace
+- inspect grader definition
+- search repository for delete_user
+- inspect tool registration
+- search for approval behavior
+- inspect middleware
+- inspect runtime/harness configuration
+- inspect passing traces
+
+Suppose the code reveals:
 
 delete_user
 → destructive tool
-→ requiresApproval=true
+→ requiresApproval = true
 → runtime pauses
 → human approval
 → execution
 
-then diagnose:
+Then:
+
+The behavior already exists.
+
+The agent is not necessarily unsafe.
+
+The grader is evaluating the wrong layer.
+
+Likely diagnosis:
 
 GRADER_OBSERVABILITY_GAP
 
-and potentially:
+possibly combined with:
 
 GRADER_RUBRIC_MISALIGNMENT
 
-Do NOT recommend changing the agent prompt.
+Recommended change:
 
-Recommend changing the grader so it evaluates whether destructive
-execution was approval-gated.
+Do not change the production agent prompt.
 
-This level of investigation is expected for important findings.
+Change the evaluator so it checks whether destructive execution was approval-gated.
+
+The interactive report should categorize these traces under a category such as:
+
+Approval enforced outside grader visibility
+
+Clicking that category should reveal every trace showing the same pattern.
+
+Each trace should provide a verified Open in Langfuse link where possible.
+
+This level of investigation is expected.
 
 ---
 
 # Final Objective
 
-The engineer should NOT have to manually:
+The engineer should not have to manually:
 
-- inspect every failed trace
+- understand the grader
+- inspect every low-scoring trace
 - compare successful traces
-- inspect grader feedback
-- find evaluator implementation
+- inspect evaluator feedback
+- find evaluator code
 - locate expected values
 - find system prompts
-- inspect tool implementations
-- trace middleware
-- understand responsibility ownership
-- determine whether the grader is wrong
-- determine what should change
+- inspect tools
+- follow middleware
+- understand runtime responsibility
+- determine whether grader or agent is wrong
+- group similar failures
+- calculate category percentages
+- manually copy trace IDs into Langfuse
+- decide what component to fix
 
 You perform that investigation.
 
 A successful investigation answers:
 
-WHAT failed?
+WHAT DOES THIS GRADER ACTUALLY DO?
 
-HOW OFTEN?
+WHAT IS FAILING?
 
-WHY?
+HOW OFTEN IS IT FAILING?
 
-WHERE did the behavior originate?
+WHAT FAILURE CATEGORIES EXIST?
 
-WHICH system layer owns it?
+WHAT PERCENTAGE DOES EACH CATEGORY REPRESENT?
 
-IS the agent actually wrong?
+WHICH TRACES BELONG TO EACH CATEGORY?
 
-IS the grader actually wrong?
+WHY ARE THEY FAILING?
 
-IS required behavior already handled elsewhere?
+WHERE DOES THE BEHAVIOR ORIGINATE?
 
-CAN the grader observe the behavior it expects?
+WHICH SYSTEM LAYER OWNS IT?
 
-WHAT evidence proves the conclusion?
+IS THE AGENT ACTUALLY WRONG?
 
-WHAT should the engineer change first?
+IS THE GRADER ACTUALLY WRONG?
+
+IS THE BEHAVIOR ALREADY IMPLEMENTED ELSEWHERE?
+
+CAN THE GRADER OBSERVE THE RESPONSIBLE LAYER?
+
+WHAT EVIDENCE SUPPORTS THE CONCLUSION?
+
+WHAT SHOULD THE ENGINEER CHANGE FIRST?
+
+CAN THE ENGINEER IMMEDIATELY OPEN THE ORIGINAL TRACE IN LANGFUSE?
+
+The investigation strategy should be autonomous and evidence-driven.
+
+The final report structure should be predictable, interactive, and optimized for debugging.
